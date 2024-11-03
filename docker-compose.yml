@@ -1,0 +1,62 @@
+
+services:
+  
+  host_a:
+    image: alpine
+    container_name: host_a
+    privileged: true  # Ejecuta el contenedor con privilegios elevados
+    networks:
+      - net_a
+    cap_add:
+      - NET_ADMIN  # Para permitir la configuración de redes dentro del contenedor
+      - SYS_ADMIN    # Añade SYS_ADMIN para cambiar configuraciones del sistema
+    command: ["tail", "-f", "/dev/null"]  # Para mantener el contenedor en ejecución
+
+  host_b:
+    image: alpine
+    container_name: host_b
+    privileged: true  # Ejecuta el contenedor con privilegios elevados
+    networks:
+      - net_a
+    cap_add:
+      - NET_ADMIN  # Para permitir la configuración de redes dentro del contenedor
+      - SYS_ADMIN    # Añade SYS_ADMIN para cambiar configuraciones del sistema
+    command: ["tail", "-f", "/dev/null"]  # Para mantener el contenedor en ejecución
+
+  android-emulator:
+    image: budtmo/docker-android:emulator_14.0  # Cambia por una versión disponible
+    container_name: android-container
+    ports:
+      - "6080:6080"  # Puerto para acceder a la interfaz web
+    environment:
+      - DEVICE=Samsung Galaxy S10 # Otras opciones de dispositivo están en la documentación
+      - EMULATOR_ARGS=-no-audio -no-boot-anim
+      - EMULATOR_DEVICE="Samsung Galaxy S10"
+      - WEB_VNC=true
+    volumes:
+      - ./android:/root/your-app # Monta tu app dentro del contenedor si es necesario
+    networks:
+      - net_a
+
+  kali:
+    image: kali-custom
+    container_name: kali
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+    privileged: true  # Otorga permisos adicionales
+    volumes:
+      - ./data:/home/hacker  # Volumen para persistencia de datos
+    networks:
+      - net_a
+
+
+
+networks:
+  net_a:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.0.0/24
+
+
