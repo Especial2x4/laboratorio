@@ -2,16 +2,26 @@
 services:
   
   host_a:
-    image: alpine
+    image: accetto/debian-vnc-xfce-python-g3
     container_name: host_a
+    environment:
+      
+      - WEB_VNC=true
+    ports:
+      - "6901:6901"                  # Puerto de noVNC
+      - "5901:5901"                # Puerto del servidor VNC
     privileged: true  # Ejecuta el contenedor con privilegios elevados
+    volumes:
+      - ./debian-home:/home/headless        # Monta un volumen opcional para persistencia
+    tty: true
     networks:
       - net_a
     cap_add:
       - NET_ADMIN  # Para permitir la configuración de redes dentro del contenedor
       - SYS_ADMIN    # Añade SYS_ADMIN para cambiar configuraciones del sistema
-    command: ["tail", "-f", "/dev/null"]  # Para mantener el contenedor en ejecución
-
+    command: sh -c "tail -f /dev/null"
+      
+      
   host_b:
     image: alpine
     container_name: host_b
@@ -23,20 +33,39 @@ services:
       - SYS_ADMIN    # Añade SYS_ADMIN para cambiar configuraciones del sistema
     command: ["tail", "-f", "/dev/null"]  # Para mantener el contenedor en ejecución
 
-  android-emulator:
-    image: budtmo/docker-android:emulator_14.0  # Cambia por una versión disponible
-    container_name: android-container
+  dvwa_web:
+    image: cytopia/dvwa:php-${PHP_VERSION:-7.1}
+    restart: unless-stopped
     ports:
-      - "6080:6080"  # Puerto para acceder a la interfaz web
-    environment:
-      - DEVICE=Samsung Galaxy S10 # Otras opciones de dispositivo están en la documentación
-      - EMULATOR_ARGS=-no-audio -no-boot-anim
-      - EMULATOR_DEVICE="Samsung Galaxy S10"
-      - WEB_VNC=true
-    volumes:
-      - ./android:/root/your-app # Monta tu app dentro del contenedor si es necesario
+      - "${LISTEN_PORT:-8000}:80"
     networks:
       - net_a
+    environment:
+      - RECAPTCHA_PRIV_KEY=${RECAPTCHA_PRIV_KEY:-}
+      - RECAPTCHA_PUB_KEY=${RECAPTCHA_PUB_KEY:-}
+      - SECURITY_LEVEL=${SECURITY_LEVEL:-medium}
+      - PHPIDS_ENABLED=${PHPIDS_ENABLED:-0}
+      - PHPIDS_VERBOSE=${PHPIDS_VERBOSE:-0}
+      - PHP_DISPLAY_ERRORS=${PHP_DISPLAY_ERRORS:-0}
+      - MYSQL_HOSTNAME=dvwa_db
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USERNAME=dvwa
+      - MYSQL_PASSWORD=p@ssw0rd
+
+  dvwa_db:
+    image: mariadb:10.1
+    hostname: dvwa_db
+    volumes:
+      - dvwa_db_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: dvwa
+      MYSQL_USER: dvwa
+      MYSQL_PASSWORD: p@ssw0rd
+    restart: unless-stopped
+    networks:
+      - net_a
+
 
   kali:
     image: kali-custom
@@ -51,7 +80,6 @@ services:
       - net_a
 
 
-
 networks:
   net_a:
     driver: bridge
@@ -59,4 +87,5 @@ networks:
       config:
         - subnet: 192.168.0.0/24
 
-
+volumes:
+  dvwa_db_data:

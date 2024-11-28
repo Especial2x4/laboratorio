@@ -12,6 +12,9 @@ RUN apt update && apt install -y \
     dnsutils \
     iputils-ping \
     metasploit-framework \
+    ftp \
+    telnet \
+    netcat-traditional \
     && apt clean
 
 # Crear un usuario no root (opcional)
