@@ -21,17 +21,27 @@ services:
       - SYS_ADMIN    # Añade SYS_ADMIN para cambiar configuraciones del sistema
     command: sh -c "tail -f /dev/null"
       
-      
-  host_b:
-    image: alpine
-    container_name: host_b
-    privileged: true  # Ejecuta el contenedor con privilegios elevados
+  metasploitable:
+    image: tleemcjr/metasploitable2
+    container_name: metasploitable
+    ports:
+      - "21:21"
+      - "2222:22"
+      - "23:23"
+      - "25:25"
+      - "80:80"
+      - "443:443"
+      - "445:445"
+      - "3306:3306"
+      - "5432:5432"
+      - "8000:8000"
+      - "8080:8080"
     networks:
-      - net_a
-    cap_add:
-      - NET_ADMIN  # Para permitir la configuración de redes dentro del contenedor
-      - SYS_ADMIN    # Añade SYS_ADMIN para cambiar configuraciones del sistema
-    command: ["tail", "-f", "/dev/null"]  # Para mantener el contenedor en ejecución
+      net_a:
+        ipv4_address: 192.168.0.50
+    privileged: true
+    stdin_open: true
+    tty: true   
 
   dvwa_web:
     image: cytopia/dvwa:php-${PHP_VERSION:-7.1}
@@ -79,6 +89,49 @@ services:
     networks:
       - net_a
 
+  wordpress:
+    image: wordpress:5.8.3-apache
+    container_name: wp-vulnerable
+    ports:
+      - "8081:80"
+    environment:
+      WORDPRESS_DB_HOST: db_wp  # Debe coincidir con el nombre del servicio
+      WORDPRESS_DB_USER: wpuser
+      WORDPRESS_DB_PASSWORD: wppassword
+      WORDPRESS_DB_NAME: wpdb
+    volumes:
+      - ./wp-content:/var/www/html/wp-content
+      - ./uploads.htaccess:/var/www/html/wp-content/uploads/.htaccess
+      - ./mu-plugins:/var/www/html/wp-content/mu-plugins
+    depends_on:
+      db_wp:
+        condition: service_healthy
+    networks:
+      net_a:
+        ipv4_address: 192.168.0.5
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/wp-admin/install.php"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  db_wp:
+    image: mariadb:10.6
+    container_name: wp-db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: wpdb
+      MYSQL_USER: wpuser
+      MYSQL_PASSWORD: wppassword
+    volumes:
+      - ./mysql:/var/lib/mysql
+    networks:
+      - net_a
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
 networks:
   net_a:
