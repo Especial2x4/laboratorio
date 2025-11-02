@@ -1,26 +1,44 @@
 
 services:
-  
-  host_a:
-    image: accetto/debian-vnc-xfce-python-g3
-    container_name: host_a
-    environment:
-      
-      - WEB_VNC=true
+  dns_server:
+    image: andyshinn/dnsmasq:2.78
+    container_name: dns-server
     ports:
-      - "6901:6901"                  # Puerto de noVNC
-      - "5901:5901"                # Puerto del servidor VNC
-    privileged: true  # Ejecuta el contenedor con privilegios elevados
-    volumes:
-      - ./debian-home:/home/headless        # Monta un volumen opcional para persistencia
-    tty: true
+      - "53:53/udp"
+    privileged: true
+    command:
+      - --log-queries
+      - --log-facility=-
+      - --address=/laboratorio.local/192.168.0.152
+      - --address=/mail.laboratorio.local/192.168.0.152
+      - --address=/wordpress.laboratorio.local/192.168.0.5
+      - --address=/hosta.laboratorio.local/192.168.0.10
+      - --address=/kali.laboratorio.local/192.168.0.20
+      - --address=/scada.laboratorio.local/192.168.0.100
+      - --address=/mqtt.laboratorio.local/192.168.0.101
+      - --address=/plc.laboratorio.local/192.168.0.102
+      - --address=/influxdb.laboratorio.local/192.168.0.103
+      - --address=/grafana.laboratorio.local/192.168.0.104
+      - --address=/nodered.laboratorio.local/192.168.0.100
     networks:
-      - net_a
-    cap_add:
-      - NET_ADMIN  # Para permitir la configuración de redes dentro del contenedor
-      - SYS_ADMIN    # Añade SYS_ADMIN para cambiar configuraciones del sistema
-    command: sh -c "tail -f /dev/null"
-      
+      net_a:
+        ipv4_address: 192.168.0.254
+
+  host_a:
+    image: dorowu/ubuntu-desktop-lxde-vnc
+    networks:
+      net_a:
+    dns:
+      - 192.168.0.254
+    ports:
+      - "6080:80"
+      - "5900:5900"
+    volumes:
+      - ./home-ubuntu:/home/ubuntu
+    command: >
+      bash -c "/opt/websockify/run 6080 -- vncserver :0 -geometry 1024x768 -depth 24 &&
+      tail -f /dev/null"
+
   metasploitable:
     image: tleemcjr/metasploitable2
     container_name: metasploitable
@@ -41,41 +59,41 @@ services:
         ipv4_address: 192.168.0.50
     privileged: true
     stdin_open: true
-    tty: true   
+    tty: true
 
-  dvwa_web:
-    image: cytopia/dvwa:php-${PHP_VERSION:-7.1}
-    restart: unless-stopped
-    ports:
-      - "${LISTEN_PORT:-8000}:80"
-    networks:
-      - net_a
-    environment:
-      - RECAPTCHA_PRIV_KEY=${RECAPTCHA_PRIV_KEY:-}
-      - RECAPTCHA_PUB_KEY=${RECAPTCHA_PUB_KEY:-}
-      - SECURITY_LEVEL=${SECURITY_LEVEL:-medium}
-      - PHPIDS_ENABLED=${PHPIDS_ENABLED:-0}
-      - PHPIDS_VERBOSE=${PHPIDS_VERBOSE:-0}
-      - PHP_DISPLAY_ERRORS=${PHP_DISPLAY_ERRORS:-0}
-      - MYSQL_HOSTNAME=dvwa_db
-      - MYSQL_DATABASE=dvwa
-      - MYSQL_USERNAME=dvwa
-      - MYSQL_PASSWORD=p@ssw0rd
+  # Servicios DVWA comentados temporalmente para evitar errores
+  # dvwa_web:
+  #   image: cytopia/dvwa:php-7.1
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8000:80"
+  #   networks:
+  #     - net_a
+  #   environment:
+  #     - RECAPTCHA_PRIV_KEY=
+  #     - RECAPTCHA_PUB_KEY=
+  #     - SECURITY_LEVEL=medium
+  #     - PHPIDS_ENABLED=0
+  #     - PHPIDS_VERBOSE=0
+  #     - PHP_DISPLAY_ERRORS=0
+  #     - MYSQL_HOSTNAME=dvwa_db
+  #     - MYSQL_DATABASE=dvwa
+  #     - MYSQL_USERNAME=dvwa
+  #     - MYSQL_PASSWORD=p@ssw0rd
 
-  dvwa_db:
-    image: mariadb:10.1
-    hostname: dvwa_db
-    volumes:
-      - dvwa_db_data:/var/lib/mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: dvwa
-      MYSQL_USER: dvwa
-      MYSQL_PASSWORD: p@ssw0rd
-    restart: unless-stopped
-    networks:
-      - net_a
-
+  # dvwa_db:
+  #   image: mariadb:10.1
+  #   hostname: dvwa_db
+  #   volumes:
+  #     - dvwa_db_data:/var/lib/mysql
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: rootpass
+  #     MYSQL_DATABASE: dvwa
+  #     MYSQL_USER: dvwa
+  #     MYSQL_PASSWORD: p@ssw0rd
+  #   restart: unless-stopped
+  #   networks:
+  #     - net_a
 
   kali:
     image: kali-custom
@@ -83,19 +101,23 @@ services:
     stdin_open: true
     tty: true
     command: /bin/bash
-    privileged: true  # Otorga permisos adicionales
+    privileged: true
+    dns:
+      - 192.168.0.254
     volumes:
-      - ./data:/home/hacker  # Volumen para persistencia de datos
+      - ./data:/home/hacker
     networks:
-      - net_a
+      net_a:
 
   wordpress:
     image: wordpress:5.8.3-apache
     container_name: wp-vulnerable
+    dns:
+      - 192.168.0.254
     ports:
       - "8081:80"
     environment:
-      WORDPRESS_DB_HOST: db_wp  # Debe coincidir con el nombre del servicio
+      WORDPRESS_DB_HOST: db_wp
       WORDPRESS_DB_USER: wpuser
       WORDPRESS_DB_PASSWORD: wppassword
       WORDPRESS_DB_NAME: wpdb
@@ -115,6 +137,26 @@ services:
       timeout: 10s
       retries: 5
 
+  nagios:
+    image: jasonrivers/nagios:latest
+    container_name: nagios
+    volumes:
+      - ./nagios/etc:/opt/nagios/etc
+      - ./nagios/var:/opt/nagios/var
+      - ./nagios/plugins:/opt/Custom-Nagios-Plugins
+      - ./nagios/graph_var:/opt/nagiosgraph/var
+      - ./nagios/graph_etc:/opt/nagiosgraph/etc
+    dns:
+      - 192.168.0.254
+    ports:
+      - "8200:80"
+    networks:
+      net_a:
+        ipv4_address: 192.168.0.200
+    environment:
+      - NAUGIOS_UID=1000
+      - NAUGIOS_GID=1000
+
   db_wp:
     image: mariadb:10.6
     container_name: wp-db
@@ -126,12 +168,113 @@ services:
     volumes:
       - ./mysql:/var/lib/mysql
     networks:
-      - net_a
+      net_a:
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpass"]
       interval: 10s
       timeout: 5s
       retries: 10
+
+  scada-core:
+    build: ./nodered-dockerfile
+    image: scada-core:latest
+    container_name: scada-core
+    ports:
+      - "2880:1880"
+      - "2881:1881"
+    volumes:
+      - ./scada/node-red-data:/data
+    environment:
+      - NODE_RED_ENABLE_PROJECTS=true
+      - TZ=Europe/Madrid
+    dns:
+      - 192.168.0.254
+    networks:
+      net_a:
+        ipv4_address: 192.168.0.100
+    depends_on:
+      - mqtt-broker
+      - plc-simulator
+    restart: unless-stopped
+
+   
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: mqtt-broker
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./scada/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./scada/mosquitto/data:/mosquitto/data
+      - ./scada/mosquitto/log:/mosquitto/log
+    networks:
+      net_a:
+        ipv4_address: 192.168.0.101
+    restart: unless-stopped
+
+  plc-simulator:
+    image: python:3.9
+    container_name: plc-simulator
+    ports:
+      - "5020:502"
+    dns:
+      - 192.168.0.254
+    networks:
+      net_a:
+        ipv4_address: 192.168.0.102
+    volumes:
+      - ./scada/plc-simulator:/app
+    working_dir: /app
+    command: >
+      bash -c "pip install pymodbus && python simulator.py"
+    restart: unless-stopped
+
+
+  scada-db:
+    image: influxdb:2.0
+    container_name: scada-db
+    ports:
+      - "8086:8086"
+    volumes:
+      - ./scada/influxdb-data:/var/lib/influxdb2
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=scada123
+      - DOCKER_INFLUXDB_INIT_ORG=laboratorio
+      - DOCKER_INFLUXDB_INIT_BUCKET=scada-data
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=my-super-secret-auth-token
+    networks:
+      net_a:
+        ipv4_address: 192.168.0.103
+    restart: unless-stopped
+
+  
+  scada-dashboard:
+    image: grafana/grafana:latest
+    container_name: scada-dashboard
+    user: "472"  # Forzar usuario Grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=scada123
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_SECURITY_ALLOWED_ORIGINS=*
+      - GF_SECURITY_ALLOWED_ORIGINS=http://localhost:3001,http://127.0.0.1:3001,http://192.168.0.104:3000
+    volumes:
+      - ./scada/grafana/data:/var/lib/grafana
+      - ./scada/grafana/provisioning:/etc/grafana/provisioning
+    dns:
+      - 192.168.0.254
+    networks:
+      net_a:
+        ipv4_address: 192.168.0.104
+    depends_on:
+      - scada-db
+    restart: unless-stopped
 
 networks:
   net_a:
